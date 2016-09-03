@@ -9,7 +9,6 @@ import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Handler;
@@ -41,41 +40,44 @@ import java.io.IOException;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import tv.danmaku.ijk.media.player.IMediaPlayer;
+import tv.danmaku.ijk.media.player.IjkMediaPlayer;
+
 
 /**
  * Created by maning on 16/6/14.
  * 播放器
  */
 public class MNViderPlayer extends FrameLayout implements View.OnClickListener, SeekBar.OnSeekBarChangeListener,
-        SurfaceHolder.Callback, GestureDetector.OnGestureListener, MediaPlayer.OnCompletionListener,
-        MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener, MediaPlayer.OnBufferingUpdateListener {
-
-    private static final String TAG = "MNViderPlayer";
-    private Context context;
-    private Activity activity;
+        SurfaceHolder.Callback, GestureDetector.OnGestureListener, IMediaPlayer.OnCompletionListener,
+        IMediaPlayer.OnPreparedListener, IMediaPlayer.OnErrorListener, IMediaPlayer.OnBufferingUpdateListener {
 
     static final Handler myHandler = new Handler(Looper.getMainLooper()) {
     };
-
+    private static final String TAG = "MNViderPlayer";
+    private static final float STEP_PROGRESS = 2f;// 设定进度滑动时的步长，避免每次滑动都改变，导致改变过快
+    private static final float STEP_VOLUME = 2f;// 协调音量滑动时的步长，避免每次滑动都改变，导致改变过快
+    private static final float STEP_LIGHT = 2f;// 协调亮度滑动时的步长，避免每次滑动都改变，导致改变过快
+    private static final int GESTURE_MODIFY_PROGRESS = 1;
+    private static final int GESTURE_MODIFY_VOLUME = 2;
+    private static final int GESTURE_MODIFY_BRIGHTNESS = 3;
+    private Context context;
+    private Activity activity;
     // SurfaceView的创建比较耗时，要注意
     private SurfaceHolder surfaceHolder;
-    private MediaPlayer mediaPlayer;
-
+    private IjkMediaPlayer mediaPlayer;
     //地址
     private String videoPath;
     private String videoTitle;
     private int video_position = 0;
-
     //控件的位置信息
     private float mediaPlayerX;
     private float mediaPlayerY;
-
     // 计时器
     private Timer timer_video_time;
     private TimerTask task_video_timer;
     private Timer timer_controller;
     private TimerTask task_controller;
-
     //是否是横屏
     private boolean isFullscreen = false;
     private boolean isLockScreen = false;
@@ -83,7 +85,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private boolean isNeedBatteryListen = true;
     private boolean isNeedNetChangeListen = true;
     private boolean isFirstPlay = false;
-
     //控件
     private RelativeLayout mn_rl_bottom_menu;
     private SurfaceView mn_palyer_surfaceView;
@@ -102,6 +103,37 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private ProgressWheel mn_player_progressBar;
     private ImageView mn_iv_battery;
     private ImageView mn_player_iv_play_center;
+    //--------------------------------------------------------------------------------------
+    // ######## 手势相关 ########
+    //--------------------------------------------------------------------------------------
+    private RelativeLayout gesture_volume_layout;// 音量控制布局
+    private TextView geture_tv_volume_percentage;// 音量百分比
+    private ImageView gesture_iv_player_volume;// 音量图标
+    private RelativeLayout gesture_light_layout;// 亮度布局
+    private TextView geture_tv_light_percentage;// 亮度百分比
+
+    //--------------------------------------------------------------------------------------
+    // ######## 相关View的操作 ########
+    //--------------------------------------------------------------------------------------
+    private RelativeLayout gesture_progress_layout;// 进度图标
+    private TextView geture_tv_progress_time;// 播放时间进度
+    private ImageView gesture_iv_progress;// 快进或快退标志
+    private GestureDetector gestureDetector;
+    private AudioManager audiomanager;
+    private int maxVolume, currentVolume;
+    private int GESTURE_FLAG = 0;// 1,调节进度，2，调节音量
+    private BatteryReceiver batteryReceiver;
+
+    //--------------------------------------------------------------------------------------
+    // ######## 计时器相关操作 ########
+    //--------------------------------------------------------------------------------------
+    private NetChangeReceiver netChangeReceiver;
+    //网络监听回调
+    private OnNetChangeListener onNetChangeListener;
+    //SurfaceView初始化完成回调
+    private OnPlayerCreatedListener onPlayerCreatedListener;
+    //-----------------------播放完回调
+    private OnCompletionListener onCompletionListener;
 
     public MNViderPlayer(Context context) {
         this(context, null);
@@ -297,10 +329,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         }
     }
 
-    //--------------------------------------------------------------------------------------
-    // ######## 相关View的操作 ########
-    //--------------------------------------------------------------------------------------
-
     private void unLockScreen() {
         isLockScreen = false;
         mn_player_iv_lock.setImageResource(R.drawable.mn_player_landscape_screen_lock_open);
@@ -367,10 +395,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         initLock();
     }
 
-    //--------------------------------------------------------------------------------------
-    // ######## 计时器相关操作 ########
-    //--------------------------------------------------------------------------------------
-
     private void initTimeTask() {
         timer_video_time = new Timer();
         task_video_timer = new TimerTask() {
@@ -385,7 +409,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                         //设置时间
                         mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(mediaPlayer.getCurrentPosition()) + " / " + PlayerUtils.converLongTimeToStr(mediaPlayer.getDuration())));
                         //进度条
-                        int progress = mediaPlayer.getCurrentPosition();
+                        int progress = (int) mediaPlayer.getCurrentPosition();
                         mn_seekBar.setProgress(progress);
                     }
                 });
@@ -466,7 +490,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
         Log.i(TAG, "surfaceCreated");
-        mediaPlayer = new MediaPlayer();
+        mediaPlayer = new IjkMediaPlayer();
         mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
         mediaPlayer.setDisplay(holder); // 添加到容器中
         //播放完成的监听
@@ -508,7 +532,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     public void surfaceDestroyed(SurfaceHolder holder) {
         //保存播放位置
         if (mediaPlayer != null) {
-            video_position = mediaPlayer.getCurrentPosition();
+            video_position = (int) mediaPlayer.getCurrentPosition();
         }
         destroyControllerTask(true);
         pauseVideo();
@@ -517,7 +541,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
 
     //MediaPlayer
     @Override
-    public void onCompletion(MediaPlayer mediaPlayer) {
+    public void onCompletion(IMediaPlayer mediaPlayer) {
         mn_iv_play_pause.setImageResource(R.drawable.mn_player_play);
         destroyControllerTask(true);
         video_position = 0;
@@ -527,16 +551,16 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     }
 
     @Override
-    public void onBufferingUpdate(MediaPlayer mp, int percent) {
+    public void onBufferingUpdate(IMediaPlayer mp, int percent) {
         Log.i(TAG, "二级缓存onBufferingUpdate: " + percent);
         if (percent >= 0 && percent <= 100) {
-            int secondProgress = mp.getDuration() * percent / 100;
+            int secondProgress = (int) (mp.getDuration() * percent / 100);
             mn_seekBar.setSecondaryProgress(secondProgress);
         }
     }
 
     @Override
-    public boolean onError(MediaPlayer mp, int what, int extra) {
+    public boolean onError(IMediaPlayer mp, int what, int extra) {
         Log.i(TAG, "发生错误error:" + what);
         if (what != -38) {  //这个错误不管
             showErrorView();
@@ -545,7 +569,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     }
 
     @Override
-    public void onPrepared(final MediaPlayer mediaPlayer) {
+    public void onPrepared(final IMediaPlayer mediaPlayer) {
         mediaPlayer.start(); // 开始播放
         isPrepare = true;
         if (video_position > 0) {
@@ -554,7 +578,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
             video_position = 0;
         }
         // 把得到的总长度和进度条的匹配
-        mn_seekBar.setMax(mediaPlayer.getDuration());
+        mn_seekBar.setMax((int) mediaPlayer.getDuration());
         mn_iv_play_pause.setImageResource(R.drawable.mn_player_pause);
         mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(mediaPlayer.getCurrentPosition()) + "/" + PlayerUtils.converLongTimeToStr(mediaPlayer.getDuration())));
         //延时：避免出现上一个视频的画面闪屏
@@ -566,28 +590,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
             }
         }, 500);
     }
-
-    //--------------------------------------------------------------------------------------
-    // ######## 手势相关 ########
-    //--------------------------------------------------------------------------------------
-    private RelativeLayout gesture_volume_layout;// 音量控制布局
-    private TextView geture_tv_volume_percentage;// 音量百分比
-    private ImageView gesture_iv_player_volume;// 音量图标
-    private RelativeLayout gesture_light_layout;// 亮度布局
-    private TextView geture_tv_light_percentage;// 亮度百分比
-    private RelativeLayout gesture_progress_layout;// 进度图标
-    private TextView geture_tv_progress_time;// 播放时间进度
-    private ImageView gesture_iv_progress;// 快进或快退标志
-    private GestureDetector gestureDetector;
-    private AudioManager audiomanager;
-    private int maxVolume, currentVolume;
-    private static final float STEP_PROGRESS = 2f;// 设定进度滑动时的步长，避免每次滑动都改变，导致改变过快
-    private static final float STEP_VOLUME = 2f;// 协调音量滑动时的步长，避免每次滑动都改变，导致改变过快
-    private static final float STEP_LIGHT = 2f;// 协调亮度滑动时的步长，避免每次滑动都改变，导致改变过快
-    private int GESTURE_FLAG = 0;// 1,调节进度，2，调节音量
-    private static final int GESTURE_MODIFY_PROGRESS = 1;
-    private static final int GESTURE_MODIFY_VOLUME = 2;
-    private static final int GESTURE_MODIFY_BRIGHTNESS = 3;
 
     private void initGesture() {
         gesture_volume_layout = (RelativeLayout) findViewById(R.id.mn_gesture_volume_layout);
@@ -622,6 +624,10 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     @Override
     public void onShowPress(MotionEvent e) {
     }
+
+    //--------------------------------------------------------------------------------------
+    // ######## 对外提供的方法 ########
+    //--------------------------------------------------------------------------------------
 
     @Override
     public boolean onSingleTapUp(MotionEvent e) {
@@ -676,9 +682,9 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                             gesture_iv_progress
                                     .setImageResource(R.drawable.mn_player_backward);
                             if (mediaPlayer.getCurrentPosition() > 3 * 1000) {// 避免为负
-                                int cpos = mediaPlayer.getCurrentPosition();
+                                int cpos = (int) mediaPlayer.getCurrentPosition();
                                 mediaPlayer.seekTo(cpos - 3000);
-                                mn_seekBar.setProgress(mediaPlayer.getCurrentPosition());
+                                mn_seekBar.setProgress((int) mediaPlayer.getCurrentPosition());
                             } else {
                                 //什么都不做
                                 mediaPlayer.seekTo(3000);
@@ -687,10 +693,10 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                             gesture_iv_progress
                                     .setImageResource(R.drawable.mn_player_forward);
                             if (mediaPlayer.getCurrentPosition() < mediaPlayer.getDuration() - 5 * 1000) {// 避免超过总时长
-                                int cpos = mediaPlayer.getCurrentPosition();
+                                int cpos = (int) mediaPlayer.getCurrentPosition();
                                 mediaPlayer.seekTo(cpos + 3000);
                                 // 把当前位置赋值给进度条
-                                mn_seekBar.setProgress(mediaPlayer.getCurrentPosition());
+                                mn_seekBar.setProgress((int) mediaPlayer.getCurrentPosition());
                             }
                         }
                     }
@@ -791,10 +797,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         }
         return gestureDetector.onTouchEvent(event);
     }
-
-    //--------------------------------------------------------------------------------------
-    // ######## 对外提供的方法 ########
-    //--------------------------------------------------------------------------------------
 
     /**
      * 设置视频信息
@@ -910,7 +912,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         if (mediaPlayer != null) {
             mediaPlayer.pause();
             mn_iv_play_pause.setImageResource(R.drawable.mn_player_play);
-            video_position = mediaPlayer.getCurrentPosition();
+            video_position = (int) mediaPlayer.getCurrentPosition();
         }
     }
 
@@ -942,6 +944,11 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         this.isNeedNetChangeListen = isNeedNetChangeListen;
     }
 
+
+    //--------------------------------------------------------------------------------------
+    // ######## 广播相关 ########
+    //--------------------------------------------------------------------------------------
+
     /**
      * 判断是不是全屏状态
      *
@@ -957,7 +964,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     public int getVideoCurrentPosition() {
         int position = 0;
         if (mediaPlayer != null) {
-            position = mediaPlayer.getCurrentPosition();
+            position = (int) mediaPlayer.getCurrentPosition();
         }
         return position;
     }
@@ -968,7 +975,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     public int getVideoTotalDuration() {
         int position = 0;
         if (mediaPlayer != null) {
-            position = mediaPlayer.getDuration();
+            position = (int) mediaPlayer.getDuration();
         }
         return position;
     }
@@ -976,7 +983,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     /**
      * 获取管理者
      */
-    public MediaPlayer getMediaPlayer() {
+    public IjkMediaPlayer getMediaPlayer() {
         return mediaPlayer;
     }
 
@@ -999,10 +1006,82 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         myHandler.removeCallbacksAndMessages(null);
     }
 
+    private void registerBatteryReceiver() {
+        if (batteryReceiver == null) {
+            //注册广播接受者
+            IntentFilter intentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            //创建广播接受者对象
+            batteryReceiver = new BatteryReceiver();
+            //注册receiver
+            context.registerReceiver(batteryReceiver, intentFilter);
+        }
+    }
+
+    private void unRegisterBatteryReceiver() {
+        if (batteryReceiver != null) {
+            context.unregisterReceiver(batteryReceiver);
+        }
+    }
+
+    private void registerNetReceiver() {
+        if (netChangeReceiver == null) {
+            IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+            netChangeReceiver = new NetChangeReceiver();
+            context.registerReceiver(netChangeReceiver, filter);
+        }
+    }
+
 
     //--------------------------------------------------------------------------------------
-    // ######## 广播相关 ########
+    // ######## 自定义回调 ########
     //--------------------------------------------------------------------------------------
+
+    private void unregisterNetReceiver() {
+        if (netChangeReceiver != null) {
+            context.unregisterReceiver(netChangeReceiver);
+        }
+    }
+
+    private void removeAllListener() {
+        if (onNetChangeListener != null) {
+            onNetChangeListener = null;
+        }
+        if (onPlayerCreatedListener != null) {
+            onPlayerCreatedListener = null;
+        }
+    }
+
+    public void setOnNetChangeListener(OnNetChangeListener onNetChangeListener) {
+        this.onNetChangeListener = onNetChangeListener;
+    }
+
+    public void setOnPlayerCreatedListener(OnPlayerCreatedListener onPlayerCreatedListener) {
+        this.onPlayerCreatedListener = onPlayerCreatedListener;
+    }
+
+    public void setOnCompletionListener(OnCompletionListener onCompletionListener) {
+        this.onCompletionListener = onCompletionListener;
+    }
+
+    public interface OnNetChangeListener {
+        //wifi
+        void onWifi(IjkMediaPlayer mediaPlayer);
+
+        //手机
+        void onMobile(IjkMediaPlayer mediaPlayer);
+
+        //不可用
+        void onNoAvailable(IjkMediaPlayer mediaPlayer);
+    }
+
+    public interface OnPlayerCreatedListener {
+        //不可用
+        void onPlayerCreated(String url, String title);
+    }
+
+    public interface OnCompletionListener {
+        void onCompletion(IMediaPlayer mediaPlayer);
+    }
 
     /**
      * 电量广播接受者
@@ -1042,25 +1121,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         }
     }
 
-    private BatteryReceiver batteryReceiver;
-
-    private void registerBatteryReceiver() {
-        if (batteryReceiver == null) {
-            //注册广播接受者
-            IntentFilter intentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-            //创建广播接受者对象
-            batteryReceiver = new BatteryReceiver();
-            //注册receiver
-            context.registerReceiver(batteryReceiver, intentFilter);
-        }
-    }
-
-    private void unRegisterBatteryReceiver() {
-        if (batteryReceiver != null) {
-            context.unregisterReceiver(batteryReceiver);
-        }
-    }
-
     //-------------------------网络变化监听
     public class NetChangeReceiver extends BroadcastReceiver {
         @Override
@@ -1082,78 +1142,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                 onNetChangeListener.onNoAvailable(mediaPlayer);
             }
         }
-    }
-
-    private NetChangeReceiver netChangeReceiver;
-
-    private void registerNetReceiver() {
-        if (netChangeReceiver == null) {
-            IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-            netChangeReceiver = new NetChangeReceiver();
-            context.registerReceiver(netChangeReceiver, filter);
-        }
-    }
-
-    private void unregisterNetReceiver() {
-        if (netChangeReceiver != null) {
-            context.unregisterReceiver(netChangeReceiver);
-        }
-    }
-
-
-    //--------------------------------------------------------------------------------------
-    // ######## 自定义回调 ########
-    //--------------------------------------------------------------------------------------
-
-    private void removeAllListener() {
-        if (onNetChangeListener != null) {
-            onNetChangeListener = null;
-        }
-        if (onPlayerCreatedListener != null) {
-            onPlayerCreatedListener = null;
-        }
-    }
-
-
-    //网络监听回调
-    private OnNetChangeListener onNetChangeListener;
-
-    public void setOnNetChangeListener(OnNetChangeListener onNetChangeListener) {
-        this.onNetChangeListener = onNetChangeListener;
-    }
-
-    public interface OnNetChangeListener {
-        //wifi
-        void onWifi(MediaPlayer mediaPlayer);
-
-        //手机
-        void onMobile(MediaPlayer mediaPlayer);
-
-        //不可用
-        void onNoAvailable(MediaPlayer mediaPlayer);
-    }
-
-    //SurfaceView初始化完成回调
-    private OnPlayerCreatedListener onPlayerCreatedListener;
-
-    public void setOnPlayerCreatedListener(OnPlayerCreatedListener onPlayerCreatedListener) {
-        this.onPlayerCreatedListener = onPlayerCreatedListener;
-    }
-
-    public interface OnPlayerCreatedListener {
-        //不可用
-        void onPlayerCreated(String url, String title);
-    }
-
-    //-----------------------播放完回调
-    private OnCompletionListener onCompletionListener;
-
-    public void setOnCompletionListener(OnCompletionListener onCompletionListener) {
-        this.onCompletionListener = onCompletionListener;
-    }
-
-    public interface OnCompletionListener {
-        void onCompletion(MediaPlayer mediaPlayer);
     }
 
 }

@@ -1,6 +1,5 @@
 package com.maning.mnvideoplayer;
 
-import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -8,6 +7,9 @@ import android.view.View;
 import android.widget.Toast;
 
 import com.maning.mnvideoplayerlibrary.player.MNViderPlayer;
+
+import tv.danmaku.ijk.media.player.IMediaPlayer;
+import tv.danmaku.ijk.media.player.IjkMediaPlayer;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -41,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
         //播放完成监听
         mnViderPlayer.setOnCompletionListener(new MNViderPlayer.OnCompletionListener() {
             @Override
-            public void onCompletion(MediaPlayer mediaPlayer) {
+            public void onCompletion(IMediaPlayer mediaPlayer) {
                 Log.i(TAG, "播放完成----");
             }
         });
@@ -49,16 +51,16 @@ public class MainActivity extends AppCompatActivity {
         //网络监听
         mnViderPlayer.setOnNetChangeListener(new MNViderPlayer.OnNetChangeListener() {
             @Override
-            public void onWifi(MediaPlayer mediaPlayer) {
+            public void onWifi(IjkMediaPlayer mediaPlayer) {
             }
 
             @Override
-            public void onMobile(MediaPlayer mediaPlayer) {
+            public void onMobile(IjkMediaPlayer mediaPlayer) {
                 Toast.makeText(MainActivity.this, "请注意,当前网络状态切换为3G/4G网络", Toast.LENGTH_LONG).show();
             }
 
             @Override
-            public void onNoAvailable(MediaPlayer mediaPlayer) {
+            public void onNoAvailable(IjkMediaPlayer mediaPlayer) {
                 Toast.makeText(MainActivity.this, "当前网络不可用,检查网络设置", Toast.LENGTH_LONG).show();
             }
         });
