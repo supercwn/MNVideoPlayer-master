@@ -1,3 +1,5 @@
+> Fork from [MNVideoPlayer](https://github.com/maning0303/MNVideoPlayer)
+
 # MNVideoPlayer
 SurfaceView + MediaPlayer 实现的视频播放器，支持横竖屏切换，手势快进快退、调节音量，亮度等。
 
