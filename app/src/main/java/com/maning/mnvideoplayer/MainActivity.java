@@ -19,6 +19,7 @@ public class MainActivity extends AppCompatActivity {
     private final String url2 = "http://bvideo.spriteapp.cn/video/2016/0704/577a4c29e1f14_wpd.mp4";
     //这个地址是错误的
     private final String url3 = "http://weibo.com/p/23044451f0e5c4b762b9e1aa49c3091eea4d94";
+    private final String url4 = "rtmp://live.hkstv.hk.lxdns.com/live/hks";
     private MNViderPlayer mnViderPlayer;
 
 
@@ -38,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
         mnViderPlayer.setIsNeedBatteryListen(true);
         mnViderPlayer.setIsNeedNetChangeListen(true);
         //第一次进来先设置数据
-        mnViderPlayer.setDataSource(url2, "标题2");
+        mnViderPlayer.setDataSource(url1, "标题2");
 
         //播放完成监听
         mnViderPlayer.setOnCompletionListener(new MNViderPlayer.OnCompletionListener() {

@@ -84,7 +84,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private boolean isPrepare = false;
     private boolean isNeedBatteryListen = true;
     private boolean isNeedNetChangeListen = true;
-    private boolean isFirstPlay = false;
+    private boolean isFirstPlay = true;
     //控件
     private RelativeLayout mn_rl_bottom_menu;
     private SurfaceView mn_palyer_surfaceView;
@@ -407,9 +407,9 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                             return;
                         }
                         //设置时间
-                        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(mediaPlayer.getCurrentPosition()) + " / " + PlayerUtils.converLongTimeToStr(mediaPlayer.getDuration())));
+                        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + " / " + PlayerUtils.converLongTimeToStr(getVideoTotalDuration())));
                         //进度条
-                        int progress = (int) mediaPlayer.getCurrentPosition();
+                        int progress = getVideoCurrentPosition();
                         mn_seekBar.setProgress(progress);
                     }
                 });
@@ -532,7 +532,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     public void surfaceDestroyed(SurfaceHolder holder) {
         //保存播放位置
         if (mediaPlayer != null) {
-            video_position = (int) mediaPlayer.getCurrentPosition();
+            video_position = getVideoCurrentPosition();
         }
         destroyControllerTask(true);
         pauseVideo();
@@ -578,9 +578,9 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
             video_position = 0;
         }
         // 把得到的总长度和进度条的匹配
-        mn_seekBar.setMax((int) mediaPlayer.getDuration());
+        mn_seekBar.setMax(getVideoTotalDuration());
         mn_iv_play_pause.setImageResource(R.drawable.mn_player_pause);
-        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(mediaPlayer.getCurrentPosition()) + "/" + PlayerUtils.converLongTimeToStr(mediaPlayer.getDuration())));
+        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + "/" + PlayerUtils.converLongTimeToStr(getVideoTotalDuration())));
         //延时：避免出现上一个视频的画面闪屏
         myHandler.postDelayed(new Runnable() {
             @Override
@@ -681,10 +681,10 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                         if (distanceX >= PlayerUtils.dip2px(context, STEP_PROGRESS)) {// 快退，用步长控制改变速度，可微调
                             gesture_iv_progress
                                     .setImageResource(R.drawable.mn_player_backward);
-                            if (mediaPlayer.getCurrentPosition() > 3 * 1000) {// 避免为负
-                                int cpos = (int) mediaPlayer.getCurrentPosition();
+                            if (getVideoCurrentPosition() > 3 * 1000) {// 避免为负
+                                int cpos = getVideoCurrentPosition();
                                 mediaPlayer.seekTo(cpos - 3000);
-                                mn_seekBar.setProgress((int) mediaPlayer.getCurrentPosition());
+                                mn_seekBar.setProgress(getVideoCurrentPosition());
                             } else {
                                 //什么都不做
                                 mediaPlayer.seekTo(3000);
@@ -692,16 +692,16 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                         } else if (distanceX <= -PlayerUtils.dip2px(context, STEP_PROGRESS)) {// 快进
                             gesture_iv_progress
                                     .setImageResource(R.drawable.mn_player_forward);
-                            if (mediaPlayer.getCurrentPosition() < mediaPlayer.getDuration() - 5 * 1000) {// 避免超过总时长
-                                int cpos = (int) mediaPlayer.getCurrentPosition();
+                            if (getVideoCurrentPosition() < getVideoTotalDuration() - 5 * 1000) {// 避免超过总时长
+                                int cpos = getVideoCurrentPosition();
                                 mediaPlayer.seekTo(cpos + 3000);
                                 // 把当前位置赋值给进度条
-                                mn_seekBar.setProgress((int) mediaPlayer.getCurrentPosition());
+                                mn_seekBar.setProgress(getVideoCurrentPosition());
                             }
                         }
                     }
-                    String timeStr = PlayerUtils.converLongTimeToStr(mediaPlayer.getCurrentPosition()) + " / "
-                            + PlayerUtils.converLongTimeToStr(mediaPlayer.getDuration());
+                    String timeStr = PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + " / "
+                            + PlayerUtils.converLongTimeToStr(getVideoTotalDuration());
                     geture_tv_progress_time.setText(timeStr);
 
                 }
@@ -912,7 +912,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         if (mediaPlayer != null) {
             mediaPlayer.pause();
             mn_iv_play_pause.setImageResource(R.drawable.mn_player_play);
-            video_position = (int) mediaPlayer.getCurrentPosition();
+            video_position = getVideoCurrentPosition();
         }
     }
 
