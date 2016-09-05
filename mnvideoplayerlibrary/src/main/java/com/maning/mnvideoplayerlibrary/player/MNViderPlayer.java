@@ -13,6 +13,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -32,6 +33,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.maning.mnvideoplayerlibrary.R;
+import com.maning.mnvideoplayerlibrary.utils.Constant;
 import com.maning.mnvideoplayerlibrary.utils.LightnessControl;
 import com.maning.mnvideoplayerlibrary.utils.PlayerUtils;
 import com.maning.mnvideoplayerlibrary.view.ProgressWheel;
@@ -61,6 +63,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private static final int GESTURE_MODIFY_PROGRESS = 1;
     private static final int GESTURE_MODIFY_VOLUME = 2;
     private static final int GESTURE_MODIFY_BRIGHTNESS = 3;
+    final MessageHandler messageHandler = new MessageHandler();
     private Context context;
     private Activity activity;
     // SurfaceView的创建比较耗时，要注意
@@ -74,8 +77,6 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private float mediaPlayerX;
     private float mediaPlayerY;
     // 计时器
-    private Timer timer_video_time;
-    private TimerTask task_video_timer;
     private Timer timer_controller;
     private TimerTask task_controller;
     //是否是横屏
@@ -85,6 +86,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     private boolean isNeedBatteryListen = true;
     private boolean isNeedNetChangeListen = true;
     private boolean isFirstPlay = true;
+    private boolean isDragging = false;
     //控件
     private RelativeLayout mn_rl_bottom_menu;
     private SurfaceView mn_palyer_surfaceView;
@@ -396,35 +398,31 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     }
 
     private void initTimeTask() {
-        timer_video_time = new Timer();
-        task_video_timer = new TimerTask() {
-            @Override
-            public void run() {
-                myHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (mediaPlayer == null) {
-                            return;
-                        }
-                        //设置时间
-                        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + " / " + PlayerUtils.converLongTimeToStr(getVideoTotalDuration())));
-                        //进度条
-                        int progress = getVideoCurrentPosition();
-                        mn_seekBar.setProgress(progress);
-                    }
-                });
-            }
-        };
-        timer_video_time.schedule(task_video_timer, 0, 1000);
+//        timer_video_time = new Timer();
+//        task_video_timer = new TimerTask() {
+//            @Override
+//            public void run() {
+//                myHandler.post(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        if (mediaPlayer == null) {
+//                            return;
+//                        }
+//                        //设置时间
+//                        mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + " / " + PlayerUtils.converLongTimeToStr(getVideoTotalDuration())));
+//                        //进度条
+//                        int progress = getVideoCurrentPosition();
+//                        mn_seekBar.setProgress(progress);
+//                    }
+//                });
+//            }
+//        };
+//        timer_video_time.schedule(task_video_timer, 0, 1000);
+        messageHandler.sendEmptyMessage(Constant.MESSAGE_SHOW_PROGRESS);
     }
 
     private void destroyTimeTask() {
-        if (timer_video_time != null && task_video_timer != null) {
-            timer_video_time.cancel();
-            task_video_timer.cancel();
-            timer_video_time = null;
-            task_video_timer = null;
-        }
+        messageHandler.removeMessages(Constant.MESSAGE_SHOW_PROGRESS);
     }
 
     private void initControllerTask() {
@@ -465,25 +463,24 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     //--------------------------------------------------------------------------------------
     @Override
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-
+        if (!fromUser) {
+            return;
+        }
+        long duration = mediaPlayer.getDuration();
+        long newPosition = (duration * progress) / 1000L;
+        mediaPlayer.seekTo(newPosition);
+        if (mn_tv_time != null)
+            mn_tv_time.setText(stringForTime(newPosition) + "/" + stringForTime(duration));
     }
 
     @Override
     public void onStartTrackingTouch(SeekBar seekBar) {
-
+        isDragging = true;
     }
 
     @Override
     public void onStopTrackingTouch(SeekBar seekBar) {
-        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-            int maxCanSeekTo = seekBar.getMax() - 5 * 1000;
-            if (seekBar.getProgress() < maxCanSeekTo) {
-                mediaPlayer.seekTo(seekBar.getProgress());
-            } else {
-                //不能拖到最后
-                mediaPlayer.seekTo(maxCanSeekTo);
-            }
-        }
+        isDragging = false;
     }
 
     //播放
@@ -554,8 +551,7 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
     public void onBufferingUpdate(IMediaPlayer mp, int percent) {
         Log.i(TAG, "二级缓存onBufferingUpdate: " + percent);
         if (percent >= 0 && percent <= 100) {
-            int secondProgress = (int) (mp.getDuration() * percent / 100);
-            mn_seekBar.setSecondaryProgress(secondProgress);
+            mn_seekBar.setSecondaryProgress((percent * 10));
         }
     }
 
@@ -578,7 +574,8 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
             video_position = 0;
         }
         // 把得到的总长度和进度条的匹配
-        mn_seekBar.setMax(getVideoTotalDuration());
+//        mn_seekBar.setMax(getVideoTotalDuration());
+        mn_seekBar.setMax(1000);
         mn_iv_play_pause.setImageResource(R.drawable.mn_player_pause);
         mn_tv_time.setText(String.valueOf(PlayerUtils.converLongTimeToStr(getVideoCurrentPosition()) + "/" + PlayerUtils.converLongTimeToStr(getVideoTotalDuration())));
         //延时：避免出现上一个视频的画面闪屏
@@ -1065,6 +1062,45 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
         this.onCompletionListener = onCompletionListener;
     }
 
+    private long changeProgress() {
+        if (mediaPlayer == null || isDragging) {
+            return 0;
+        }
+        long position = mediaPlayer.getCurrentPosition();
+        long duration = mediaPlayer.getDuration();
+        if (mn_seekBar != null) {
+            if (duration > 0) {
+                // use long to avoid overflow
+                long pos = 1000L * position / duration;
+                mn_seekBar.setProgress((int) pos);
+            }
+//            sbProgress.setSecondaryProgress((int) (percent * 10));
+        }
+        mn_tv_time.setText(stringForTime(position) + "/" + stringForTime(duration));
+        return position;
+    }
+
+    /**
+     * 毫秒转为播放的时间，格式为 mm:ss
+     *
+     * @param timeMs 毫秒
+     * @return 时间 string
+     */
+    private String stringForTime(long timeMs) {
+        long totalSeconds = timeMs / 1000;
+        long seconds = totalSeconds % 60;
+        long minutes = (totalSeconds / 60) % 60;
+        long hours = totalSeconds / 3600;
+        StringBuilder mFormatBuilder = new StringBuilder();
+        java.util.Formatter mFormatter = new java.util.Formatter();
+        mFormatBuilder.setLength(0);
+        if (hours > 0) {
+            return mFormatter.format("%d:%02d:%02d", hours, minutes, seconds).toString();
+        } else {
+            return mFormatter.format("%02d:%02d", minutes, seconds).toString();
+        }
+    }
+
     public interface OnNetChangeListener {
         //wifi
         void onWifi(IjkMediaPlayer mediaPlayer);
@@ -1142,6 +1178,22 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                 }
             } else {
                 onNetChangeListener.onNoAvailable(mediaPlayer);
+            }
+        }
+    }
+
+    /**
+     * The type Message handler.
+     */
+    class MessageHandler extends Handler {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case Constant.MESSAGE_SHOW_PROGRESS:
+                    msg = obtainMessage(Constant.MESSAGE_SHOW_PROGRESS);
+                    long pos = changeProgress();
+                    sendMessageDelayed(msg, 1000 - (pos % 1000));
+                    break;
             }
         }
     }
