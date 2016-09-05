@@ -883,6 +883,8 @@ public class MNViderPlayer extends FrameLayout implements View.OnClickListener, 
                 }
                 //重置mediaPlayer
                 mediaPlayer.reset();
+                //用于重新绑定surface
+                mediaPlayer.setDisplay(surfaceHolder);
                 //添加播放路径
                 mediaPlayer.setDataSource(videoPath);
                 // 准备开始,异步准备，自动在子线程中
